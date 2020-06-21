@@ -1,6 +1,6 @@
 {
   "name": "tunnel-server-webpack-plugin",
-  "description": "",
+  "description": "A plugin to start server compilation and send the logs to another window.",
   "bin": {
     "tunnel-server-webpack-plugin": "bin/index.js"
   },
