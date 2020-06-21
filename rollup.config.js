@@ -27,7 +27,7 @@ export default [
     output: {
       file: "bin/index.js",
       format: "cjs",
-      banner: "#!/bin/env/node",
+      banner: "#!/usr/bin/env node",
     },
     plugins: [
       common(),
