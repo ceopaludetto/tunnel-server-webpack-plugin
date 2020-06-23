@@ -4,8 +4,24 @@ import socket from "socket.io";
 import { Runner } from "~/utils/runner";
 import { DEFAULT_PORT } from "~/constants";
 
-export default class WebpackInterfaceStartPlugin {
-  constructor(options = {}) {
+interface TunnelServerWebpackPluginOptions {
+  name: string;
+  args?: string[];
+  nodeArgs?: string[];
+  clearOnRestart?: boolean;
+  port?: number;
+  signal?: boolean;
+  keyboard?: boolean;
+}
+
+export default class TunnelServerWebpackPlugin {
+  private options!: TunnelServerWebpackPluginOptions;
+  private server!: socket.Server;
+  private connectedSocket!: socket.Socket;
+  private runner!: Runner;
+  private entryPoint!: string;
+
+  public constructor(options?: TunnelServerWebpackPluginOptions) {
     if (typeof options === "string") {
       options = { name: options };
     }
@@ -21,32 +37,31 @@ export default class WebpackInterfaceStartPlugin {
       ...options,
     };
 
-    if (this.options.keyboard) {
-      this.addKeyboardListener();
-    }
-
     this.server = socket(this.options.port);
 
     this.server.on("connection", (socket) => {
+      if (this.connectedSocket?.connected) {
+        this.connectedSocket?.disconnect();
+      }
       this.connectedSocket = socket;
+      if (this.options.keyboard) {
+        this.addKeyboardListener();
+      }
       this.runner.socketConnected(this.connectedSocket);
     });
   }
 
-  addKeyboardListener = () => {
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (data) => {
-      if (data.trim() === "rs") {
-        this.start();
-      }
+  private addKeyboardListener = () => {
+    this.connectedSocket.on("rs", () => {
+      this.start();
     });
   };
 
-  afterEmit = (compilation, callback) => {
+  private afterEmit = (compilation, callback) => {
     this.startServer(compilation, callback);
   };
 
-  watchClose = async () => {
+  private watchClose = async () => {
     if (this.server) {
       this.server.close();
     }
@@ -57,13 +72,7 @@ export default class WebpackInterfaceStartPlugin {
     }
   };
 
-  apply = (compiler) => {
-    if (compiler.TunnelServerWebpackPlugin) {
-      return;
-    }
-
-    compiler.TunnelServerWebpackPlugin = this;
-
+  public apply = (compiler) => {
     if (!this.runner) {
       this.runner = new Runner();
     }
@@ -79,29 +88,17 @@ export default class WebpackInterfaceStartPlugin {
     }
   };
 
-  startServer = (compilation, callback) => {
-    const { options } = this;
-    let name;
+  private startServer = (compilation, callback) => {
     const names = Object.keys(compilation.assets);
-    if (options.name) {
-      name = options.name;
-      if (!compilation.assets[name]) {
-        console.error(
-          "Entry " + name + " not found. Try one of: " + names.join(" ")
-        );
-      }
-    } else {
-      name = names[0];
-      if (names.length > 1) {
-        console.log(
-          "More than one entry built, selected " +
-            name +
-            ". All names: " +
-            names.join(" ")
-        );
-      }
+    if (!compilation.assets[this.options.name]) {
+      console.error(
+        "Entry " +
+          this.options.name +
+          " not found. Try one of: " +
+          names.join(" ")
+      );
     }
-    const { existsAt } = compilation.assets[name];
+    const { existsAt } = compilation.assets[this.options.name];
     this.entryPoint = existsAt;
     fs.chmodSync(this.entryPoint, "777");
 
@@ -109,6 +106,7 @@ export default class WebpackInterfaceStartPlugin {
       this.runner.setOptions({
         command: this.entryPoint,
         args: this.options.args,
+        nodeArgs: this.options.nodeArgs,
       });
     }
 
@@ -117,14 +115,13 @@ export default class WebpackInterfaceStartPlugin {
     });
   };
 
-  start = (callback) => {
+  private start = (callback?: () => void) => {
     if (this.runner.child) {
       this.runner.child.kill();
       this.runner.child.removeAllListeners();
       this.runner.child = undefined;
 
       if (this.options.clearOnRestart) {
-        console.log("clearing");
         this?.connectedSocket?.emit("clear");
         this.runner.messages = [];
       }
