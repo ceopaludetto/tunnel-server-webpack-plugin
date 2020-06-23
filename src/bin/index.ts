@@ -9,7 +9,7 @@ const program = new Command("tunnel-server-webpack-plugin");
 
 program
   .version(version)
-  .option("-p, --port", "socket server port", DEFAULT_PORT);
+  .option("-p, --port", "socket server port", String(DEFAULT_PORT));
 
 program.parse(process.argv);
 
@@ -26,4 +26,12 @@ socket.on("application", (message) => {
 
 socket.on("clear", () => {
   clearConsole();
+});
+
+process.stdin.setEncoding("utf-8");
+process.stdin.on("data", (message: string) => {
+  const data = message.trim();
+  if (data === "rs") {
+    socket.emit("rs");
+  }
 });
